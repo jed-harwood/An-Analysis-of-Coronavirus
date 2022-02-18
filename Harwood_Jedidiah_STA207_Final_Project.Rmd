@@ -11,13 +11,11 @@ output:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 ```
 
-
 # Abstract
 
 # Introduction
 
-  For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective.  In this paper, we shall utilize techniques such as Analysis of Variance, Analysis of Covariance, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce coronavirus infections were effective. 
-  
+For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective. In this paper, we shall utilize techniques such as Analysis of Variance, Analysis of Covariance, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce corona virus infections were effective. Additionally, we shall consider an interaction effect between the region and the government interaction factors, in order to determine whether the varying government authorities differed in their ability to enforce corona virus restrictions.
 
 # Exploratory Data Analysis
 
@@ -35,7 +33,7 @@ covid1 <- covid %>%
                                  "South-East Asia" = "SEARO")) 
 covid1 <- covid1[which(is.na(covid1) == F), ]
 
-covid2 <- COVID19::covid19() 
+covid2 <- COVID19::covid19(verbose = F) 
 covid <- left_join(covid1, covid2, by = c("Date_reported" = "date", "Country_code" = "iso_alpha_2")) %>% filter(!is.na(New_cases)) %>% group_by(WHO_region) 
 ```
 
@@ -43,7 +41,20 @@ covid <- left_join(covid1, covid2, by = c("Date_reported" = "date", "Country_cod
 knitr::kable(covid %>% summarise('New_Cases' = sum(New_cases)), caption = "Table 1: Number of New Cases by Region", col.names = c("Region", "New Cases"))
 ```
 
+Table 1 shows the number of new cases per region (as designated by the World Health Organization). However, while it would be easy to conclude that Europe experienced the most corona virus cases, this summary does not take into account the population residing in each region. Therefore, in order to have a more interpretable response variable, we shall standardize each region's number of new cases by their respective populations.
 
+As drawn from multiple sources, the population of each of these regions are presented in the table below:
+
+|             |             |                       |        |                 |                 |
+|-------------|-------------|-----------------------|--------|-----------------|-----------------|
+| Africa      | Americas    | Eastern Mediterranean | Europe | South-East Asia | Western Pacific |
+| 36.4/$km^2$ | 22.7/$km^2$ |                       |        | 135.6/$km^2$    |                 |
+
+: Population for WHO -designated Region, by concentration per $km^2$
+
+```{r Standardizing Response Variable}
+covid %>% group_by(WHO_region)
+```
 
 # Model
 
@@ -53,5 +64,6 @@ knitr::kable(covid %>% summarise('New_Cases' = sum(New_cases)), caption = "Table
 
 # Conclusion
 
+# References
 
-  
+<http://www.worldometers.info/world-population/asia-population/>
