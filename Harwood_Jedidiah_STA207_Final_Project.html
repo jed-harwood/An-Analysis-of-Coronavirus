@@ -11,7 +11,7 @@
 
 <meta name="author" content="Jedidiah Harwood" />
 
-<meta name="date" content="2022-02-15" />
+<meta name="date" content="2022-02-22" />
 
 <title>An Analysis of Coronavirus</title>
 
@@ -169,7 +169,7 @@ pre code {
 
 <h1 class="title toc-ignore">An Analysis of Coronavirus</h1>
 <h4 class="author">Jedidiah Harwood</h4>
-<h4 class="date">2022-02-15</h4>
+<h4 class="date">2022-02-22</h4>
 
 </div>
 
@@ -179,29 +179,10 @@ pre code {
 </div>
 <div id="introduction" class="section level1">
 <h1>Introduction</h1>
-<p>For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective. In this paper, we shall utilize techniques such as Analysis of Variance, Analysis of Covariance, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce coronavirus infections were effective.</p>
+<p>For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective. In this paper, we shall utilize techniques such as Analysis of Variance, Analysis of Covariance, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce corona virus infections were effective. Additionally, we shall consider an interaction effect between the region and the government interaction factors, in order to determine whether the varying government authorities differed in their ability to enforce corona virus restrictions.</p>
 </div>
 <div id="exploratory-data-analysis" class="section level1">
 <h1>Exploratory Data Analysis</h1>
-<pre><code>## We have invested a lot of time and effort in creating COVID-19 Data Hub, please cite the following when using it:
-## 
-##   Guidotti, E., Ardia, D., (2020), &quot;COVID-19 Data Hub&quot;, Journal of Open
-##   Source Software 5(51):2376, doi: 10.21105/joss.02376.
-## 
-## A BibTeX entry for LaTeX users is
-## 
-##   @Article{,
-##     title = {COVID-19 Data Hub},
-##     year = {2020},
-##     doi = {10.21105/joss.02376},
-##     author = {Emanuele Guidotti and David Ardia},
-##     journal = {Journal of Open Source Software},
-##     volume = {5},
-##     number = {51},
-##     pages = {2376},
-##   }
-## 
-## To hide this message use &#39;verbose = FALSE&#39;.</code></pre>
 <table>
 <caption>Table 1: Number of New Cases by Region</caption>
 <thead>
@@ -213,30 +194,69 @@ pre code {
 <tbody>
 <tr class="odd">
 <td align="left">Africa</td>
-<td align="right">8233711</td>
+<td align="right">8299377</td>
 </tr>
 <tr class="even">
 <td align="left">Americas</td>
-<td align="right">143465933</td>
+<td align="right">145602269</td>
 </tr>
 <tr class="odd">
 <td align="left">Eastern Mediterranean</td>
-<td align="right">20512381</td>
+<td align="right">20926245</td>
 </tr>
 <tr class="even">
 <td align="left">Europe</td>
-<td align="right">166359260</td>
+<td align="right">173349843</td>
 </tr>
 <tr class="odd">
 <td align="left">South-East Asia</td>
-<td align="right">54477585</td>
+<td align="right">55208863</td>
 </tr>
 <tr class="even">
 <td align="left">Western Pacific</td>
-<td align="right">19302251</td>
+<td align="right">21435318</td>
 </tr>
 </tbody>
 </table>
+<p>Table 1 shows the number of new cases per region (as designated by the World Health Organization). However, while it would be easy to conclude that Europe experienced the most corona virus cases, this summary does not take into account the population residing in each region. Therefore, in order to have a more interpretable response variable, we shall standardize each region’s number of new cases by their respective populations.</p>
+<p><br />
+To rescale the data, we will utilize the population for each country in a region (as drawn from <a href="https://data.worldbank.org/indicator/SP.POP.TOTL">The World Data Bank</a><a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>), and divide each country’s number of <code>New_cases</code> in a particular region, by the summed population of each country in the region. For the sake of interpretability, we will also multiply these newly-scaled data by a factor of <span class="math inline">\(1,000\)</span> as well.</p>
+<table>
+<caption>Table 2: Number of (Scaled) New Cases by Region</caption>
+<thead>
+<tr class="header">
+<th align="left">Region</th>
+<th align="right">New Cases (Scaled)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Africa</td>
+<td align="right">8.313573</td>
+</tr>
+<tr class="even">
+<td align="left">Americas</td>
+<td align="right">147.548062</td>
+</tr>
+<tr class="odd">
+<td align="left">Eastern Mediterranean</td>
+<td align="right">42.527244</td>
+</tr>
+<tr class="even">
+<td align="left">Europe</td>
+<td align="right">223.726718</td>
+</tr>
+<tr class="odd">
+<td align="left">South-East Asia</td>
+<td align="right">27.658177</td>
+</tr>
+<tr class="even">
+<td align="left">Western Pacific</td>
+<td align="right">11.625201</td>
+</tr>
+</tbody>
+</table>
+<p>As evident from Table 2, we can see that there are obvious differences in the number of (scaled) new cases between the regions. For instance — Europe and Americas have a much higher number of (scaled) new cases, than the other regions.</p>
 </div>
 <div id="model" class="section level1">
 <h1>Model</h1>
@@ -249,6 +269,17 @@ pre code {
 </div>
 <div id="conclusion" class="section level1">
 <h1>Conclusion</h1>
+</div>
+<div id="references" class="section level1">
+<h1>References</h1>
+<p><a href="https://data.worldbank.org/indicator/SP.POP.TOTL" class="uri">https://data.worldbank.org/indicator/SP.POP.TOTL</a></p>
+<p><a href="https://en.wikipedia.org/wiki/Demographics_of_Eritrea" class="uri">https://en.wikipedia.org/wiki/Demographics_of_Eritrea</a></p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Most countries’ populations are based off of data from the year 2020. However, some countries such as Eritrea, haven’t conducted an official census as recently, and thus, estimates of the country’s population have been replaced with 2011 estimates.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+</ol>
 </div>
 
 

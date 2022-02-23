@@ -15,7 +15,9 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 # Introduction
 
-For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective. In this paper, we shall utilize techniques such as Analysis of Variance, Analysis of Covariance, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce corona virus infections were effective. Additionally, we shall consider an interaction effect between the region and the government interaction factors, in order to determine whether the varying government authorities differed in their ability to enforce corona virus restrictions.
+For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective. In this paper, we shall utilize techniques such as Analysis of Covariance, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce corona virus infections were effective. Additionally, we shall consider an interaction effect between the region and the government interaction factors, in order to determine whether the varying government authorities differed in their ability to enforce corona virus restrictions.
+
+We argue that it is more efficient to compare each region rather than country, as: - Countries in the same region are bound to have an influx of citizens from nearby countries entering and leaving the country, and as a result, could lead to spatial dependencies in the number of corona virus cases. - Any model comparing the different regions will have less parameters than a model comparing each individual country, and hence, will result in a lower error variance. -
 
 # Exploratory Data Analysis
 
@@ -23,6 +25,7 @@ For the past two years, the corona virus pandemic has been a subject of vexation
 library(tidyverse)
 library(gridExtra)
 library(COVID19)
+librar
 covid <- read_csv("https://covid19.who.int/WHO-COVID-19-global-data.csv")
 covid1 <- covid %>% 
   filter(WHO_region != "Other") %>% mutate(WHO_region = fct_recode(WHO_region, "Eastern Mediterranean"="EMRO",
@@ -35,6 +38,7 @@ covid1 <- covid1[which(is.na(covid1) == F), ]
 
 covid2 <- COVID19::covid19(verbose = F) 
 covid <- left_join(covid1, covid2, by = c("Date_reported" = "date", "Country_code" = "iso_alpha_2")) %>% filter(!is.na(New_cases)) %>% group_by(WHO_region) 
+
 ```
 
 ```{r Table 1: Cases by Region}
@@ -43,27 +47,93 @@ knitr::kable(covid %>% summarise('New_Cases' = sum(New_cases)), caption = "Table
 
 Table 1 shows the number of new cases per region (as designated by the World Health Organization). However, while it would be easy to conclude that Europe experienced the most corona virus cases, this summary does not take into account the population residing in each region. Therefore, in order to have a more interpretable response variable, we shall standardize each region's number of new cases by their respective populations.
 
-As drawn from multiple sources, the population of each of these regions are presented in the table below:
+\
+To rescale the data, we will utilize the population for each country in a region (as drawn from [The World Data Bank](https://data.worldbank.org/indicator/SP.POP.TOTL)[^1]), and divide each country's number of `New_cases` in a particular region, by the summed population of each country in the region. For the sake of interpretability, we will also multiply these newly-scaled data by a factor of $1,000$ as well.
 
-|             |             |                       |        |                 |                 |
-|-------------|-------------|-----------------------|--------|-----------------|-----------------|
-| Africa      | Americas    | Eastern Mediterranean | Europe | South-East Asia | Western Pacific |
-| 36.4/$km^2$ | 22.7/$km^2$ |                       |        | 135.6/$km^2$    |                 |
-
-: Population for WHO -designated Region, by concentration per $km^2$
+[^1]: Most countries' populations are based off of data from the year 2020. However, some countries such as Eritrea, haven't conducted an official census as recently, and thus, estimates of the country's population have been replaced with 2011 estimates.
 
 ```{r Standardizing Response Variable}
-covid %>% group_by(WHO_region)
+
+### Lists of Country by Region
+africaNames<- c("Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cameroon", "Cape Verde", "Central African Republic", "Chad", "Comoros", "Ivory Coast", "Democratic Republic of the Congo", "Equatorial Guinea", "Eritrea", "Ethiopia", "Gabon", "Gambia", "Ghana", "Guinea", "Guinea-Bissau", "Kenya", "Lesotho", "Liberia", "Madagascar", "Malawi", "Mali", "Mauritania", "Mauritius", "Mozambique", "Namibia", "Niger", "Nigeria", "Republic of the Congo", "Rwanda", "Sao Tome and Principe Africa", "Senegal", "Seychelles", "Sierra Leone", "South Africa", "South Sudan", "Eswatini", "Togo", "Uganda", "Tanzania", "Zambia", "Zimbabwe")
+
+americasNames <- c("Antigua and Barbuda", "Argentina", "Bahamas", "Barbados", "Belize", "Bolivia", "Brazil", "Canada", "Chile", "Colombia", "Costa Rica", "Cuba", "Dominica", "Dominican Republic", "Ecuador", "El Salvador", "Grenada", "Guatemala", "Guyana", "Haiti", "Honduras", "Jamaica", "Mexico", "Nicaragua", "Panama", "Paraguay", "Peru", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Suriname", "Trinidad and Tobago", "United States", "Uruguay", "Venezuela")
+
+eastMedNames <- c("Afghanistan", "Bahrain", "Djibouti", "Egypt", "Iran", "Iraq", "Jordan", "Kuwait", "Lebanon", "Libya", "Morocco", "Oman", "Pakistan", "Palestine", "Qatar", "Saudi Arabia", "Somalia", "Sudan", "Syria", "Tunisia", "United Arab Emirates", "Yemen")
+
+europeNames <- c("Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belarus", "Belgium", "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Finland", "France", "Georgia", "Germany", "Greece", 'Hungary', "Iceland", "Ireland", "Israel", "Italy", "Kazakhstan", "Kyrgyzstan", "Latvia", 'Lithuania', 'Luxembourg', 'Malta', 'Moldova', 'Monaco', 'Montenegro', 'Netherlands', 'North Macedonia', 'Norway', 'Poland', 'Portugal', 'Romania', 'Russia', 'San Marino', 'Serbia', 'Slovakia', 'Slovenia', 'Spain', 'Sweden', 'Switzerland', 'Tajikistan', 'Turkey', 'Turkmenistan', 'Ukraine', 'United Kingdom', 'Uzbekistan')
+
+soeastAsiaNames <- c("Bangladesh", "Bhutan", "North Korea", "India", "Indonesia", "Maldives", "Myanmar", "Nepal", "Sri Lanka", "Thailand", "Timor-Leste")
+
+
+westPacificNames <- c('Australia', 'Brunei', 'Cambodia', 'China', 'Cook Islands', 'Fiji', 'Japan', 'Kiribati', 'Laos', 'Malaysia', 'Marshall Islands', 'Micronesia', 'Mongolia', 'Nauru', 'New Zealand', 'Niue', 'Palau', 'Papua New Guinea', 'Philippines', 'Samoa', 'Singapore', 'Solomon Islands', 'South Korea', 'Tonga', 'Tuvalu', 'Vanuatu', 'Vietnam')
+
+### Population by Region
+
+popByCountry <- read_csv("popData.csv", skip = 4)
+popByCountry[which(popByCountry$`Country Name` == "Eritrea"), 5] <- population[1243, 3]
+
+africaPop <- filter(popByCountry, `Country Name` %in% africaNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+
+americaspop <- filter(popByCountry, `Country Name` %in% americasNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+
+eastMedpop <- filter(popByCountry, `Country Name` %in% eastMedNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+
+europepop <- filter(popByCountry, `Country Name` %in% europeNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+
+soeastAsiapop <- filter(popByCountry, `Country Name` %in% soeastAsiaNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+
+westPacificpop <- filter(popByCountry, `Country Name` %in% westPacificNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+
+### Making Number of New Cases scaled by Population
+
+for (i in 1:nrow(covid)){
+covid$New_cases_scaled[i] <- if (covid$WHO_region[i] == "Africa"){
+  covid$New_cases[i]/africaPop$population
+} else if (covid$WHO_region[i] == "Americas"){
+  covid$New_cases[i]/americaspop$population
+} else if (covid$WHO_region[i] =="Eastern Mediterranean"){
+  covid$New_cases[i]/eastMedpop$population
+} else if (covid$WHO_region[i] == "Europe"){
+  covid$New_cases[i]/europepop$population
+} else if (covid$WHO_region[i] == "South-East Asia"){
+  covid$New_cases[i]/soeastAsiapop$population
+} else {
+  covid$New_cases[i]/westPacificpop$population
+}
+  
+}
+
+covid$New_cases_scaled <- covid$New_cases_scaled * 1000
+
+knitr::kable(covid %>% group_by(WHO_region) %>% summarise('New Cases' = sum(New_cases_scaled)), caption = "Table 2: Number of (Scaled) New Cases by Region", col.names = c("Region", "New Cases (Scaled)"))
+
 ```
 
-# Model
+As evident from Table 2, we can see that there are obvious differences in the number of (scaled) new cases between the regions. For instance --- Europe and Americas have a much higher number of (scaled) new cases, than the other regions.
 
-# Analysis
+```{r}
 
-# Diagnostics/Sensitivity Analysis
+```
+
+# ANCOVA Model
+
+## Model
+
+## Analysis
+
+## Model Selection
+
+## Diagnostics
+
+# Model 2
+
+## Diagnostics/Sensitivity Analysis
 
 # Conclusion
 
 # References
 
-<http://www.worldometers.info/world-population/asia-population/>
+<https://data.worldbank.org/indicator/SP.POP.TOTL>
+
+<https://en.wikipedia.org/wiki/Demographics_of_Eritrea>
