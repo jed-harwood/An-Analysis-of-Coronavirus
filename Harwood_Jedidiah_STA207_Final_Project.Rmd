@@ -17,15 +17,24 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective. In this paper, we shall utilize techniques such as Analysis of Covariance, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce corona virus infections were effective. Additionally, we shall consider an interaction effect between the region and the government interaction factors, in order to determine whether the varying government authorities differed in their ability to enforce corona virus restrictions.
 
-We argue that it is more efficient to compare each region rather than country, as: - Countries in the same region are bound to have an influx of citizens from nearby countries entering and leaving the country, and as a result, could lead to spatial dependencies in the number of corona virus cases. - Any model comparing the different regions will have less parameters than a model comparing each individual country, and hence, will result in a lower error variance. -
+We argue that it is more efficient to compare each region rather than country, as: 
+-   Countries within the same region are likely to experience more international travel from its neighboring countries, and could lead to spatial dependencies in the number of corona virus cases. 
+-   Any model comparing the different regions will have less parameters than a model comparing each individual country, and hence, will result in a lower error variance. 
+-   Countries within each region are culturally similar; wearing face masks is a common occurrence in the East Asian countries, but is not so in the American countries. 
+-   For the purposes of model building, if we compare by regions instead of by countries, we reduce the error variability -- leading to increased power for tests of significance.
 
-# Exploratory Data Analysis
+# Background 
 
-```{r Data Processing}
+**EXPLAIN VARIABLES OF INTEREST, WHY WE SELECTED THEM, MOVE DISCUSSION OF WHY WE SUMMARISE BY REGION, DISCUSS THE CODING FOR FACTORS. DESCRIBE VARIABLES**
+
+```{r Data Preprocessing, fig.dim=c(10,10)}
 library(tidyverse)
+library(plotly)
+library(naniar)
+library(waffle)
 library(gridExtra)
 library(COVID19)
-librar
+library(MASS)
 covid <- read_csv("https://covid19.who.int/WHO-COVID-19-global-data.csv")
 covid1 <- covid %>% 
   filter(WHO_region != "Other") %>% mutate(WHO_region = fct_recode(WHO_region, "Eastern Mediterranean"="EMRO",
@@ -39,7 +48,18 @@ covid1 <- covid1[which(is.na(covid1) == F), ]
 covid2 <- COVID19::covid19(verbose = F) 
 covid <- left_join(covid1, covid2, by = c("Date_reported" = "date", "Country_code" = "iso_alpha_2")) %>% filter(!is.na(New_cases)) %>% group_by(WHO_region) 
 
+covid[, c(20:32, 34)] <- lapply(covid[, c(20:32, 34)], FUN = factor)
+covid <- covid %>% filter(facial_coverings %in% c(0:4))
+covid$facial_coverings <- fct_recode(covid$facial_coverings, "No Policy" = '0', "Recommended" = '1', "Required Partially" = '2', "Required in Public" = '3', "Required Out of House" = '4')
 ```
+
+```{r NA Plot}
+gg_miss_var(covid[, c(4:8, 20:32, 34)], show_pct = T)
+```
+
+# Exploratory Data Analysis
+
+To begin, we first conduct some preliminary analysis of the dataset.  
 
 ```{r Table 1: Cases by Region}
 knitr::kable(covid %>% summarise('New_Cases' = sum(New_cases)), caption = "Table 1: Number of New Cases by Region", col.names = c("Region", "New Cases"))
@@ -55,80 +75,432 @@ To rescale the data, we will utilize the population for each country in a region
 ```{r Standardizing Response Variable}
 
 ### Lists of Country by Region
-africaNames<- c("Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cameroon", "Cape Verde", "Central African Republic", "Chad", "Comoros", "Ivory Coast", "Democratic Republic of the Congo", "Equatorial Guinea", "Eritrea", "Ethiopia", "Gabon", "Gambia", "Ghana", "Guinea", "Guinea-Bissau", "Kenya", "Lesotho", "Liberia", "Madagascar", "Malawi", "Mali", "Mauritania", "Mauritius", "Mozambique", "Namibia", "Niger", "Nigeria", "Republic of the Congo", "Rwanda", "Sao Tome and Principe Africa", "Senegal", "Seychelles", "Sierra Leone", "South Africa", "South Sudan", "Eswatini", "Togo", "Uganda", "Tanzania", "Zambia", "Zimbabwe")
+africaNames <-
+  c(
+    "Algeria",
+    "Angola",
+    "Benin",
+    "Botswana",
+    "Burkina Faso",
+    "Burundi",
+    "Cameroon",
+    "Cape Verde",
+    "Central African Republic",
+    "Chad",
+    "Comoros",
+    "Ivory Coast",
+    "Democratic Republic of the Congo",
+    "Equatorial Guinea",
+    "Eritrea",
+    "Ethiopia",
+    "Gabon",
+    "Gambia",
+    "Ghana",
+    "Guinea",
+    "Guinea-Bissau",
+    "Kenya",
+    "Lesotho",
+    "Liberia",
+    "Madagascar",
+    "Malawi",
+    "Mali",
+    "Mauritania",
+    "Mauritius",
+    "Mozambique",
+    "Namibia",
+    "Niger",
+    "Nigeria",
+    "Republic of the Congo",
+    "Rwanda",
+    "Sao Tome and Principe Africa",
+    "Senegal",
+    "Seychelles",
+    "Sierra Leone",
+    "South Africa",
+    "South Sudan",
+    "Eswatini",
+    "Togo",
+    "Uganda",
+    "Tanzania",
+    "Zambia",
+    "Zimbabwe"
+  )
 
-americasNames <- c("Antigua and Barbuda", "Argentina", "Bahamas", "Barbados", "Belize", "Bolivia", "Brazil", "Canada", "Chile", "Colombia", "Costa Rica", "Cuba", "Dominica", "Dominican Republic", "Ecuador", "El Salvador", "Grenada", "Guatemala", "Guyana", "Haiti", "Honduras", "Jamaica", "Mexico", "Nicaragua", "Panama", "Paraguay", "Peru", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Suriname", "Trinidad and Tobago", "United States", "Uruguay", "Venezuela")
+americasNames <-
+  c(
+    "Antigua and Barbuda",
+    "Argentina",
+    "Bahamas",
+    "Barbados",
+    "Belize",
+    "Bolivia",
+    "Brazil",
+    "Canada",
+    "Chile",
+    "Colombia",
+    "Costa Rica",
+    "Cuba",
+    "Dominica",
+    "Dominican Republic",
+    "Ecuador",
+    "El Salvador",
+    "Grenada",
+    "Guatemala",
+    "Guyana",
+    "Haiti",
+    "Honduras",
+    "Jamaica",
+    "Mexico",
+    "Nicaragua",
+    "Panama",
+    "Paraguay",
+    "Peru",
+    "Saint Kitts and Nevis",
+    "Saint Lucia",
+    "Saint Vincent and the Grenadines",
+    "Suriname",
+    "Trinidad and Tobago",
+    "United States",
+    "Uruguay",
+    "Venezuela"
+  )
 
-eastMedNames <- c("Afghanistan", "Bahrain", "Djibouti", "Egypt", "Iran", "Iraq", "Jordan", "Kuwait", "Lebanon", "Libya", "Morocco", "Oman", "Pakistan", "Palestine", "Qatar", "Saudi Arabia", "Somalia", "Sudan", "Syria", "Tunisia", "United Arab Emirates", "Yemen")
+eastMedNames <-
+  c(
+    "Afghanistan",
+    "Bahrain",
+    "Djibouti",
+    "Egypt",
+    "Iran",
+    "Iraq",
+    "Jordan",
+    "Kuwait",
+    "Lebanon",
+    "Libya",
+    "Morocco",
+    "Oman",
+    "Pakistan",
+    "Palestine",
+    "Qatar",
+    "Saudi Arabia",
+    "Somalia",
+    "Sudan",
+    "Syria",
+    "Tunisia",
+    "United Arab Emirates",
+    "Yemen"
+  )
 
-europeNames <- c("Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belarus", "Belgium", "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Finland", "France", "Georgia", "Germany", "Greece", 'Hungary', "Iceland", "Ireland", "Israel", "Italy", "Kazakhstan", "Kyrgyzstan", "Latvia", 'Lithuania', 'Luxembourg', 'Malta', 'Moldova', 'Monaco', 'Montenegro', 'Netherlands', 'North Macedonia', 'Norway', 'Poland', 'Portugal', 'Romania', 'Russia', 'San Marino', 'Serbia', 'Slovakia', 'Slovenia', 'Spain', 'Sweden', 'Switzerland', 'Tajikistan', 'Turkey', 'Turkmenistan', 'Ukraine', 'United Kingdom', 'Uzbekistan')
+europeNames <-
+  c(
+    "Albania",
+    "Andorra",
+    "Armenia",
+    "Austria",
+    "Azerbaijan",
+    "Belarus",
+    "Belgium",
+    "Bosnia and Herzegovina",
+    "Bulgaria",
+    "Croatia",
+    "Cyprus",
+    "Czech Republic",
+    "Denmark",
+    "Estonia",
+    "Finland",
+    "France",
+    "Georgia",
+    "Germany",
+    "Greece",
+    'Hungary',
+    "Iceland",
+    "Ireland",
+    "Israel",
+    "Italy",
+    "Kazakhstan",
+    "Kyrgyzstan",
+    "Latvia",
+    'Lithuania',
+    'Luxembourg',
+    'Malta',
+    'Moldova',
+    'Monaco',
+    'Montenegro',
+    'Netherlands',
+    'North Macedonia',
+    'Norway',
+    'Poland',
+    'Portugal',
+    'Romania',
+    'Russia',
+    'San Marino',
+    'Serbia',
+    'Slovakia',
+    'Slovenia',
+    'Spain',
+    'Sweden',
+    'Switzerland',
+    'Tajikistan',
+    'Turkey',
+    'Turkmenistan',
+    'Ukraine',
+    'United Kingdom',
+    'Uzbekistan'
+  )
 
-soeastAsiaNames <- c("Bangladesh", "Bhutan", "North Korea", "India", "Indonesia", "Maldives", "Myanmar", "Nepal", "Sri Lanka", "Thailand", "Timor-Leste")
+soeastAsiaNames <-
+  c(
+    "Bangladesh",
+    "Bhutan",
+    "North Korea",
+    "India",
+    "Indonesia",
+    "Maldives",
+    "Myanmar",
+    "Nepal",
+    "Sri Lanka",
+    "Thailand",
+    "Timor-Leste"
+  )
 
 
-westPacificNames <- c('Australia', 'Brunei', 'Cambodia', 'China', 'Cook Islands', 'Fiji', 'Japan', 'Kiribati', 'Laos', 'Malaysia', 'Marshall Islands', 'Micronesia', 'Mongolia', 'Nauru', 'New Zealand', 'Niue', 'Palau', 'Papua New Guinea', 'Philippines', 'Samoa', 'Singapore', 'Solomon Islands', 'South Korea', 'Tonga', 'Tuvalu', 'Vanuatu', 'Vietnam')
+westPacificNames <-
+  c(
+    'Australia',
+    'Brunei',
+    'Cambodia',
+    'China',
+    'Cook Islands',
+    'Fiji',
+    'Japan',
+    'Kiribati',
+    'Laos',
+    'Malaysia',
+    'Marshall Islands',
+    'Micronesia',
+    'Mongolia',
+    'Nauru',
+    'New Zealand',
+    'Niue',
+    'Palau',
+    'Papua New Guinea',
+    'Philippines',
+    'Samoa',
+    'Singapore',
+    'Solomon Islands',
+    'South Korea',
+    'Tonga',
+    'Tuvalu',
+    'Vanuatu',
+    'Vietnam'
+  )
 
 ### Population by Region
 
 popByCountry <- read_csv("popData.csv", skip = 4)
-popByCountry[which(popByCountry$`Country Name` == "Eritrea"), 5] <- population[1243, 3]
+popByCountry[which(popByCountry$`Country Name` == "Eritrea"), 5] <-
+  population[1243, 3]
 
-africaPop <- filter(popByCountry, `Country Name` %in% africaNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+africaPop <-
+  filter(popByCountry, `Country Name` %in% africaNames) %>% summarise("population" = sum(`2020`, na.rm = T))
 
-americaspop <- filter(popByCountry, `Country Name` %in% americasNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+americaspop <-
+  filter(popByCountry, `Country Name` %in% americasNames) %>% summarise("population" = sum(`2020`, na.rm = T))
 
-eastMedpop <- filter(popByCountry, `Country Name` %in% eastMedNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+eastMedpop <-
+  filter(popByCountry, `Country Name` %in% eastMedNames) %>% summarise("population" = sum(`2020`, na.rm = T))
 
-europepop <- filter(popByCountry, `Country Name` %in% europeNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+europepop <-
+  filter(popByCountry, `Country Name` %in% europeNames) %>% summarise("population" = sum(`2020`, na.rm = T))
 
-soeastAsiapop <- filter(popByCountry, `Country Name` %in% soeastAsiaNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+soeastAsiapop <-
+  filter(popByCountry, `Country Name` %in% soeastAsiaNames) %>% summarise("population" = sum(`2020`, na.rm = T))
 
-westPacificpop <- filter(popByCountry, `Country Name` %in% westPacificNames) %>% summarise("population" = sum(`2020`, na.rm = T))
+westPacificpop <-
+  filter(popByCountry, `Country Name` %in% westPacificNames) %>% summarise("population" = sum(`2020`, na.rm = T))
 
 ### Making Number of New Cases scaled by Population
 
-for (i in 1:nrow(covid)){
-covid$New_cases_scaled[i] <- if (covid$WHO_region[i] == "Africa"){
-  covid$New_cases[i]/africaPop$population
-} else if (covid$WHO_region[i] == "Americas"){
-  covid$New_cases[i]/americaspop$population
-} else if (covid$WHO_region[i] =="Eastern Mediterranean"){
-  covid$New_cases[i]/eastMedpop$population
-} else if (covid$WHO_region[i] == "Europe"){
-  covid$New_cases[i]/europepop$population
-} else if (covid$WHO_region[i] == "South-East Asia"){
-  covid$New_cases[i]/soeastAsiapop$population
-} else {
-  covid$New_cases[i]/westPacificpop$population
-}
+for (i in 1:nrow(covid)) {
+  covid$New_cases_scaled[i] <- if (covid$WHO_region[i] == "Africa") {
+    covid$New_cases[i] / africaPop$population
+  } else if (covid$WHO_region[i] == "Americas") {
+    covid$New_cases[i] / americaspop$population
+  } else if (covid$WHO_region[i] == "Eastern Mediterranean") {
+    covid$New_cases[i] / eastMedpop$population
+  } else if (covid$WHO_region[i] == "Europe") {
+    covid$New_cases[i] / europepop$population
+  } else if (covid$WHO_region[i] == "South-East Asia") {
+    covid$New_cases[i] / soeastAsiapop$population
+  } else {
+    covid$New_cases[i] / westPacificpop$population
+  }
   
 }
 
-covid$New_cases_scaled <- covid$New_cases_scaled * 1000
+covid$New_cases_scaled <- covid$New_cases_scaled * 100000
 
-knitr::kable(covid %>% group_by(WHO_region) %>% summarise('New Cases' = sum(New_cases_scaled)), caption = "Table 2: Number of (Scaled) New Cases by Region", col.names = c("Region", "New Cases (Scaled)"))
-
-```
-
-As evident from Table 2, we can see that there are obvious differences in the number of (scaled) new cases between the regions. For instance --- Europe and Americas have a much higher number of (scaled) new cases, than the other regions.
-
-```{r}
+knitr::kable(
+  covid %>% group_by(WHO_region) %>% summarise('New Cases' = sum(New_cases_scaled)),
+  caption = "Table 2: Number of (Scaled) New Cases by Region",
+  col.names = c("Region", "New Cases (Scaled)")
+)
 
 ```
+
+As evident from Table 2, we can see that there are obvious differences in the (scaled) number of new cases between the regions. For instance --- Europe and Americas have a much higher (scaled) number of new cases, than the other regions.  A comparison in the (scaled) number of corona virus cases by region willb e conducted, in the Analysis section of this paper.  
+
+We will now proceed to analyze some of the more interesting variables in this dataset.  
+```{r Numerical Summaries for Other Variables}
+summary(covid[, c(4:8)])
+```
+
+As evident from the `summary` function, we can see that the majority of the observations in this dataset were from Europe.  The region with the least amount of observations in this dataset, was South East Asia.  This implies that in terms of the ANCOVA model, we are dealing with an unbalanced design.  This is to be expected, as we are dealing with observational data.  Next, one may notice that the summaries for the `New_cases` and `New_deaths` variables have negative values as their minimum.  The reason behind this negative number, is that countries made corrections on the number of corona virus cases on previous days.  
+
+
+```{r Facial Covering Percentage, fig.dim=c(50,50), fig.cap="Figure 1: Waffle Chart for Proportions of Mask Mandates by Region"}
+waffleVizAfr <-
+  covid %>% filter(WHO_region == 'Africa') %>% group_by(facial_coverings) %>% summarise("count" = n()) %>% pull(name = facial_coverings) /
+  1000
+
+waffleVizAmer <-
+  covid %>% filter(WHO_region == 'Americas') %>% group_by(facial_coverings) %>% summarise("count" = n()) %>% pull(name = facial_coverings) /
+  1000
+
+waffleVizEMed <-
+  covid %>% filter(WHO_region == 'Eastern Mediterranean') %>% group_by(facial_coverings) %>% summarise("count" = n()) %>% pull(name = facial_coverings) /
+  1000
+
+waffleVizEuro <-
+  covid %>% filter(WHO_region == 'Europe') %>% group_by(facial_coverings) %>% summarise("count" = n()) %>% pull(name = facial_coverings) /
+  1000
+
+waffleVizSAsia <-
+  covid %>% filter(WHO_region == 'South-East Asia') %>% group_by(facial_coverings) %>% summarise("count" = n()) %>% pull(name = facial_coverings) /
+  1000
+
+waffleVizWPac <-
+  covid %>% filter(WHO_region == 'Western Pacific') %>% group_by(facial_coverings) %>% summarise("count" = n()) %>% pull(name = facial_coverings) /
+  1000
+
+w1 <- waffle(parts = waffleVizAfr, rows = 5) +
+  xlab("Africa") +
+  scale_fill_brewer(
+    palette = 'Dark2',
+    name = "Mask Policly",
+    labels = c(
+      "No Policy",
+      "Recommened",
+      "Required in Some Public Areas",
+      "Required in All Public Areas",
+      "Required Outside of Home"
+    )
+  )
+
+w2 <- waffle(parts = waffleVizAmer, rows = 5) +
+  xlab("Americas") +
+  scale_fill_brewer(
+    palette = 'Dark2',
+    name = "Mask Policly",
+    labels = c(
+      "No Policy",
+      "Recommened",
+      "Required in Some Public Areas",
+      "Required in All Public Areas",
+      "Required Outside of Home"
+    )
+  )
+
+w3 <- waffle(parts = waffleVizEuro, rows = 5) +
+  xlab("Europe") +
+  scale_fill_brewer(
+    palette = 'Dark2',
+    name = "Mask Policly",
+    labels = c(
+      "No Policy",
+      "Recommened",
+      "Required in Some Public Areas",
+      "Required in All Public Areas",
+      "Required Outside of Home"
+    )
+  )
+
+w4 <- waffle(parts = waffleVizSAsia, rows = 5) +
+  xlab("South East Asia") +
+  scale_fill_brewer(
+    palette = 'Dark2',
+    name = "Mask Policly",
+    labels = c(
+      "No Policy",
+      "Recommened",
+      "Required in Some Public Areas",
+      "Required in All Public Areas",
+      "Required Outside of Home"
+    )
+  )
+
+w5 <- waffle(parts = waffleVizWPac, rows = 5) +
+  scale_fill_brewer(
+    palette = 'Dark2',
+    name = "Mask Policly",
+    labels = c(
+      "No Policy",
+      "Recommened",
+      "Required in Some Public Areas",
+      "Required in All Public Areas",
+      "Required Outside of Home"
+    )
+  ) +
+  xlab("West Paific")
+
+grid.arrange(w1, w2, w3, w4, w5, nrow = 3) 
+```
+  As evident from Figure 1, the differing regions had differences in their respective mask requirements.  For Africa, it was most common for countries to require masks in all public spaces.  For Europe, most countries required masks in public areas to an extent.  For the Americas, most countries required masks in public areas.  For the West Pacific, most countries either had no policy. Finally, the majority of South-East Asia required masks in some public areas.  
+  
+```{r Violin Plot of Response by Region, fig.cap="Figure 2: Violin Plot of (Scaled) New Cases by Region"}
+covid %>% 
+  filter(Date_reported>= "2021-01-01", Date_reported<= "2021-01-28") %>% 
+  group_by(WHO_region) %>%
+  plot_ly(
+    x= ~New_cases_scaled,
+    text=~WHO_region,
+    hoverinfo="WHO_region",
+    color=~WHO_region,
+    type = 'violin',
+    showlegend = T
+  )
+```
+  
+```{r Scaled Number of New Cases by Region and Number Vaccinated }
+ggplot(covid, aes(x = recovered, y = New_cases_scaled)) +
+  geom_point(aes(group = WHO_region)) + 
+  facet_wrap(~facial_coverings)
+```
+  
+  
+  
+
+
+
 
 # ANCOVA Model
 
-## Model
 
-## Analysis
+```{r}
+fit1 <- lm(New_cases_scaled ~ recovered + I(recovered^2) + WHO_region + factor(gatherings_restrictions) + factor(school_closing) + factor(cancel_events) + facial_coverings-1, data = covid)
+```
 
-## Model Selection
 
-## Diagnostics
 
-# Model 2
 
-## Diagnostics/Sensitivity Analysis
+# Bayesian Model
+
+
+# Model Selection
+
+ Diagnostics
+
+## Sensitivity Analysis
 
 # Conclusion
 
