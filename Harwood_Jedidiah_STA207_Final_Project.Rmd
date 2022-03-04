@@ -15,21 +15,100 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 # Introduction
 
-For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective. In this paper, we shall utilize techniques such as Analysis of Covariance, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce corona virus infections were effective. Additionally, we shall consider an interaction effect between the region and the government interaction factors, in order to determine whether the varying government authorities differed in their ability to enforce corona virus restrictions.
+For the past two years, the corona virus pandemic has been a subject of vexation. A specific concern that has arisen throughout the pandemic, is whether or not certain geographical areas, are more prone to outbreaks than others, and whether government interventions to reduce corona virus infections were effective. In this paper, we shall utilize techniques such as Multiple Linear Regression, and Bayesian Inference to determine whether or not certain geographical regions were more prone to corona virus outbreaks than others, and whether government efforts to reduce corona virus infections were effective. We then continue to explore the potential differences in the regions and government intervention effects, using techniques, such as Tukey's HSD, and Likelihood Ratio tests. Finally, we discuss whether or not causal inference can be made directly on the factors of interest.
 
-We argue that it is more efficient to compare each region rather than country, as: 
--   Countries within the same region are likely to experience more international travel from its neighboring countries, and could lead to spatial dependencies in the number of corona virus cases. 
--   Any model comparing the different regions will have less parameters than a model comparing each individual country, and hence, will result in a lower error variance. 
--   Countries within each region are culturally similar; wearing face masks is a common occurrence in the East Asian countries, but is not so in the American countries. 
+# Background
+
+The data of interest, was obtained from the World Health Organization (WHO), and the COVID19 Data Hub. In order to examine whether government intervention (effectively) reduced the number of corona virus cases, we selected four variables representing various forms of government interventions/restrictions. Of interest to us in these variables, are their effects on the number of new cases. Presented below, are these indicator variables, along with a brief description on its contents, and coding:
+
+-   facial_coverings: An indicator variable pertaining to the severity of the facial-covering requirements, for the country of the observation.
+
+    -   Variable Coding:
+
+        -   0 - No policy
+
+        -   1 - Recommended
+
+        -   2 - Required in some public spaces outside the home with other people present, or when social distancing is not possible.
+
+        -   3 - Required in all public spaces, with people present.
+
+        -   4 - Required in all public spaces, regardless if people are present or not.
+
+-   school_closing: An indicator variable pertaining to the severity of the (temporary) shut down of in-person schools.
+
+    -   Variable Coding:
+
+        -   0 - No restrictions.
+
+        -   1 - Recommended.
+
+        -   2 - Required for some grade levels.
+
+        -   3 - Required for all grade levels.
+
+-   gatherings_restrictions: An indicator variable pertaining to the restrictions imposed on public gatherings, for the observation's country.
+
+    -   Variable Coding:
+
+        -   0 - No restrictions
+
+        -   1 - Restrictions for very large gatherings.
+
+        -   2 - Restrictions for large gatherings.
+
+        -   3 - Restrictions for medium-sized gatherings.
+
+        -   4 - Restrictions for small gatherings.
+
+-   cancel_events: An indicator variable pertaining to the restrictions imposed on local events.
+
+    -   Variable Coding:
+
+        -   0 - No restrictions.
+
+        -   1 - Recommended to cancel the event.
+
+        -   2 - Required to cancel the event.
+
+These specific variables were selected among other government restriction indicators, as they were among the most controversial restrictions taken up by various governments. Additionally, the effectiveness of these measures were under constant scrutiny. Next, we utilized the following variables from the WHO's COVID19 - Data bank:
+
+-   WHO_region: The region of the observation's occurrence.
+
+    -   Regions:
+
+        -   Africa
+
+        -   Americas
+
+        -   Europe
+
+        -   South-East Asia
+
+        -   Western Pacific
+
+-   New_cases: The number of newly reported cases.
+
+-   New_deaths: The number of newly reported deaths resulting from coronavirus, in the past seven days.
+
+In these data, it is worth noting that there were negative-valued observations in the `New_cases` variable. The reason for this obscurity, is that corrections were submitted into the data, to account for false positive test results. Additionally, there was coding present within the indicator variables, that were coded with a negative sign. These negative codes indicate that it represents a best guess of the policy enforced in the observation's country. For example: a $-1$ in the `cancel_events` column would imply that the observation's country *likely* recommended the cancellation of events.
+
+For the purposes of this paper, we produce an "ANCOVA-styled" multiple regression model, treating the number of `New_cases` as our response variable, with the `WHO_region` , `facial_coverings`, `school_closing`, `gatherings_restrictions`, and `cancel_events` as factors, and the `New_deaths` variable as a covariate. In order to ensure the validity of our results, we will exclude any negative-coded indicator variables present within the data.
+
+We argue that it is more efficient to compare each region rather than country, as:
+
+-   Countries within the same region are likely to experience more international travel from its neighboring countries, and could lead to spatial dependencies in the number of corona virus cases.
+
+-   Any model comparing the different regions will have less parameters than a model comparing each individual country, and hence, will result in a lower error variance.
+
+-   Countries within each region are culturally similar; wearing face masks is a common occurrence in the East Asian countries, but is not so in the American countries.
+
 -   For the purposes of model building, if we compare by regions instead of by countries, we reduce the error variability -- leading to increased power for tests of significance.
-
-# Background 
-
-**EXPLAIN VARIABLES OF INTEREST, WHY WE SELECTED THEM, MOVE DISCUSSION OF WHY WE SUMMARISE BY REGION, DISCUSS THE CODING FOR FACTORS. DESCRIBE VARIABLES**
 
 ```{r Data Preprocessing, fig.dim=c(10,10)}
 library(tidyverse)
 library(plotly)
+library(car)
 library(naniar)
 library(waffle)
 library(gridExtra)
@@ -48,252 +127,91 @@ covid1 <- covid1[which(is.na(covid1) == F), ]
 covid2 <- COVID19::covid19(verbose = F) 
 covid <- left_join(covid1, covid2, by = c("Date_reported" = "date", "Country_code" = "iso_alpha_2")) %>% filter(!is.na(New_cases)) %>% group_by(WHO_region) 
 
-covid[, c(20:32, 34)] <- lapply(covid[, c(20:32, 34)], FUN = factor)
-covid <- covid %>% filter(facial_coverings %in% c(0:4))
+covid[, c(20:32)] <- lapply(covid[, c(20:32)], FUN = factor)
+covid <- covid %>% filter(facial_coverings %in% c(0:4)) %>% filter(school_closing %in% c(0:3)) %>% filter(cancel_events %in% c(0:2)) %>% filter(gatherings_restrictions %in% c(0:4))
 covid$facial_coverings <- fct_recode(covid$facial_coverings, "No Policy" = '0', "Recommended" = '1', "Required Partially" = '2', "Required in Public" = '3', "Required Out of House" = '4')
-```
-
-```{r NA Plot}
-gg_miss_var(covid[, c(4:8, 20:32, 34)], show_pct = T)
 ```
 
 # Exploratory Data Analysis
 
-To begin, we first conduct some preliminary analysis of the dataset.  
+To begin, we first conduct some preliminary analysis of the dataset. One aspect of the data that is important to consider, is the number of missing values present. In order to evaluate how many missing values that we may be dealing with, we will utilize the `gg_miss_var` function, from the `naniar` package.
+
+```{r NA Plot, fig.cap= "Figure 1: Missing Values by Variable"}
+gg_miss_var(covid[, c("WHO_region", "New_cases", "New_deaths", "facial_coverings", "gatherings_restrictions", "cancel_events", "school_closing")], show_pct = T)
+```
+
+Presented from *Figure 1*, is a missing value plot, by variable for our dataset. As evident from the plot above, there are no missing values present within the dataset, after filtering out the negative-valued indicator observations. This will make the process of model building and data analysis easier.
+
+Next, it may be useful to analyze the number of new corona virus cases by region, in order to gain an understanding of how the distribution of new cases differ by region.
 
 ```{r Table 1: Cases by Region}
 knitr::kable(covid %>% summarise('New_Cases' = sum(New_cases)), caption = "Table 1: Number of New Cases by Region", col.names = c("Region", "New Cases"))
 ```
 
-Table 1 shows the number of new cases per region (as designated by the World Health Organization). However, while it would be easy to conclude that Europe experienced the most corona virus cases, this summary does not take into account the population residing in each region. Therefore, in order to have a more interpretable response variable, we shall standardize each region's number of new cases by their respective populations.
+Table 1 shows the number of new cases per region (as designated by the World Health Organization). However, while it would be easy to conclude that Europe experienced the most corona virus cases, this summary does not take into account the population residing in each region. To see this, consider a numerical summary, as presented below:
+
+```{r Numerical Summaries for Other Variables}
+summary(covid[, c(4:8)])
+```
+
+As evident from the `summary` function, we can see that the majority of the observations in this dataset were from Europe. The region with the least amount of observations in this dataset, was South East Asia. This is to be expected, as we are dealing with observational data. Next, one may notice that the summaries for the `New_cases` and `New_deaths` variables have negative values as their minimum. As stated earlier, the reason behind these negative numbers, is that countries made corrections on the number of corona virus cases on previous days. We can see that on average, there were $1,346$ New cases for a given observation in this dataset. However, the median number of new cases per observation, was only $40$. This implies that the distribution of new cases was heavily skewed right. The most probable reason for this scenario, is due to differences in population between the countries. Large countries such as the United States, or, China, are bound to have a higher population, and hence, a (potentially) higher number of new cases. Therefore, in order to have a more interpretable response variable, we shall standardize each region's number of new cases by their respective populations.
 
 \
-To rescale the data, we will utilize the population for each country in a region (as drawn from [The World Data Bank](https://data.worldbank.org/indicator/SP.POP.TOTL)[^1]), and divide each country's number of `New_cases` in a particular region, by the summed population of each country in the region. For the sake of interpretability, we will also multiply these newly-scaled data by a factor of $1,000$ as well.
+To re-scale the data, we will utilize the population for each country in a region (as drawn from [The World Data Bank](https://data.worldbank.org/indicator/SP.POP.TOTL)[^1]), and divide each country's number of `New_cases` in a particular region, by the summed population of each country in the region. For the sake of interpretability, we will also multiply these newly-scaled data by a factor of $100,000$. Finally, to make any future transformations on the data easier, we will add to each observation a value of 1, so that each of the scaled observations will be non-negative.
 
 [^1]: Most countries' populations are based off of data from the year 2020. However, some countries such as Eritrea, haven't conducted an official census as recently, and thus, estimates of the country's population have been replaced with 2011 estimates.
+
+$$
+Y_{ij}^{(1)} = \frac{Y_{ij}}{W_J}*100,000  + 5 \\ i \cong \text{Who Region, } j=\{1, 2, ... n_i\}, W_i \cong \text{Population of i'th Who Region} \\ \text {Equation 1: Scaling of Response Variable}
+$$
 
 ```{r Standardizing Response Variable}
 
 ### Lists of Country by Region
 africaNames <-
-  c(
-    "Algeria",
-    "Angola",
-    "Benin",
-    "Botswana",
-    "Burkina Faso",
-    "Burundi",
-    "Cameroon",
-    "Cape Verde",
-    "Central African Republic",
-    "Chad",
-    "Comoros",
-    "Ivory Coast",
-    "Democratic Republic of the Congo",
-    "Equatorial Guinea",
-    "Eritrea",
-    "Ethiopia",
-    "Gabon",
-    "Gambia",
-    "Ghana",
-    "Guinea",
-    "Guinea-Bissau",
-    "Kenya",
-    "Lesotho",
-    "Liberia",
-    "Madagascar",
-    "Malawi",
-    "Mali",
-    "Mauritania",
-    "Mauritius",
-    "Mozambique",
-    "Namibia",
-    "Niger",
-    "Nigeria",
-    "Republic of the Congo",
-    "Rwanda",
-    "Sao Tome and Principe Africa",
-    "Senegal",
-    "Seychelles",
-    "Sierra Leone",
-    "South Africa",
-    "South Sudan",
-    "Eswatini",
-    "Togo",
-    "Uganda",
-    "Tanzania",
-    "Zambia",
-    "Zimbabwe"
-  )
+  c("Algeria","Angola","Benin","Botswana","Burkina Faso","Burundi",
+    "Cameroon", "Cape Verde","Central African Republic","Chad", "Comoros",
+    "Ivory Coast","Democratic Republic of the Congo", "Equatorial Guinea",
+    "Eritrea","Ethiopia", "Gabon", "Gambia",  "Ghana", "Guinea","Guinea-Bissau",
+    "Kenya", "Lesotho", "Liberia", "Madagascar", "Malawi", "Mali", "Mauritania",
+    "Mauritius", "Mozambique",  "Namibia", "Niger", "Nigeria","Republic of the Congo",
+    "Rwanda", "Sao Tome and Principe Africa", "Senegal", "Seychelles", "Sierra Leone",
+    "South Africa", "South Sudan",  "Eswatini", "Togo", "Uganda", "Tanzania", "Zambia",
+    "Zimbabwe")
 
 americasNames <-
-  c(
-    "Antigua and Barbuda",
-    "Argentina",
-    "Bahamas",
-    "Barbados",
-    "Belize",
-    "Bolivia",
-    "Brazil",
-    "Canada",
-    "Chile",
-    "Colombia",
-    "Costa Rica",
-    "Cuba",
-    "Dominica",
-    "Dominican Republic",
-    "Ecuador",
-    "El Salvador",
-    "Grenada",
-    "Guatemala",
-    "Guyana",
-    "Haiti",
-    "Honduras",
-    "Jamaica",
-    "Mexico",
-    "Nicaragua",
-    "Panama",
-    "Paraguay",
-    "Peru",
-    "Saint Kitts and Nevis",
-    "Saint Lucia",
-    "Saint Vincent and the Grenadines",
-    "Suriname",
-    "Trinidad and Tobago",
-    "United States",
-    "Uruguay",
-    "Venezuela"
-  )
+  c("Antigua and Barbuda", "Argentina","Bahamas","Barbados","Belize","Bolivia",
+    "Brazil","Canada","Chile","Colombia", "Costa Rica", "Cuba","Dominica",
+    "Dominican Republic", "Ecuador","El Salvador","Grenada","Guatemala","Guyana","Haiti",
+    "Honduras", "Jamaica", "Mexico", "Nicaragua", "Panama", "Paraguay", "Peru",
+    "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines","Suriname",
+    "Trinidad and Tobago","United States","Uruguay","Venezuela"  )
 
 eastMedNames <-
-  c(
-    "Afghanistan",
-    "Bahrain",
-    "Djibouti",
-    "Egypt",
-    "Iran",
-    "Iraq",
-    "Jordan",
-    "Kuwait",
-    "Lebanon",
-    "Libya",
-    "Morocco",
-    "Oman",
-    "Pakistan",
-    "Palestine",
-    "Qatar",
-    "Saudi Arabia",
-    "Somalia",
-    "Sudan",
-    "Syria",
-    "Tunisia",
-    "United Arab Emirates",
-    "Yemen"
-  )
+  c("Afghanistan","Bahrain","Djibouti", "Egypt", "Iran", "Iraq", "Jordan", "Kuwait", 
+    "Lebanon", "Libya","Morocco", "Oman", "Pakistan", "Palestine", "Qatar", "Saudi Arabia",
+    "Somalia","Sudan","Syria","Tunisia","United Arab Emirates", "Yemen")
 
 europeNames <-
-  c(
-    "Albania",
-    "Andorra",
-    "Armenia",
-    "Austria",
-    "Azerbaijan",
-    "Belarus",
-    "Belgium",
-    "Bosnia and Herzegovina",
-    "Bulgaria",
-    "Croatia",
-    "Cyprus",
-    "Czech Republic",
-    "Denmark",
-    "Estonia",
-    "Finland",
-    "France",
-    "Georgia",
-    "Germany",
-    "Greece",
-    'Hungary',
-    "Iceland",
-    "Ireland",
-    "Israel",
-    "Italy",
-    "Kazakhstan",
-    "Kyrgyzstan",
-    "Latvia",
-    'Lithuania',
-    'Luxembourg',
-    'Malta',
-    'Moldova',
-    'Monaco',
-    'Montenegro',
-    'Netherlands',
-    'North Macedonia',
-    'Norway',
-    'Poland',
-    'Portugal',
-    'Romania',
-    'Russia',
-    'San Marino',
-    'Serbia',
-    'Slovakia',
-    'Slovenia',
-    'Spain',
-    'Sweden',
-    'Switzerland',
-    'Tajikistan',
-    'Turkey',
-    'Turkmenistan',
-    'Ukraine',
-    'United Kingdom',
-    'Uzbekistan'
-  )
+  c("Albania","Andorra","Armenia","Austria","Azerbaijan","Belarus","Belgium",
+    "Bosnia and Herzegovina","Bulgaria","Croatia","Cyprus","Czech Republic","Denmark",
+    "Estonia","Finland","France", "Georgia","Germany","Greece",'Hungary',"Iceland", 
+    "Ireland","Israel", "Italy", "Kazakhstan","Kyrgyzstan","Latvia",'Lithuania','Luxembourg',
+    'Malta','Moldova','Monaco','Montenegro','Netherlands','North Macedonia','Norway',
+    'Poland','Portugal','Romania','Russia', 'San Marino', 'Serbia', 'Slovakia','Slovenia',
+    'Spain','Sweden','Switzerland','Tajikistan','Turkey','Turkmenistan','Ukraine',
+    'United Kingdom','Uzbekistan')
 
 soeastAsiaNames <-
-  c(
-    "Bangladesh",
-    "Bhutan",
-    "North Korea",
-    "India",
-    "Indonesia",
-    "Maldives",
-    "Myanmar",
-    "Nepal",
-    "Sri Lanka",
-    "Thailand",
-    "Timor-Leste"
-  )
+  c("Bangladesh","Bhutan","North Korea","India","Indonesia","Maldives","Myanmar","Nepal",
+    "Sri Lanka","Thailand","Timor-Leste")
 
 
 westPacificNames <-
-  c(
-    'Australia',
-    'Brunei',
-    'Cambodia',
-    'China',
-    'Cook Islands',
-    'Fiji',
-    'Japan',
-    'Kiribati',
-    'Laos',
-    'Malaysia',
-    'Marshall Islands',
-    'Micronesia',
-    'Mongolia',
-    'Nauru',
-    'New Zealand',
-    'Niue',
-    'Palau',
-    'Papua New Guinea',
-    'Philippines',
-    'Samoa',
-    'Singapore',
-    'Solomon Islands',
-    'South Korea',
-    'Tonga',
-    'Tuvalu',
-    'Vanuatu',
-    'Vietnam'
-  )
+  c('Australia','Brunei','Cambodia','China','Cook Islands','Fiji','Japan','Kiribati','Laos',
+    'Malaysia', 'Marshall Islands','Micronesia','Mongolia','Nauru','New Zealand','Niue',
+    'Palau','Papua New Guinea','Philippines','Samoa','Singapore','Solomon Islands',
+    'South Korea','Tonga','Tuvalu','Vanuatu','Vietnam')
 
 ### Population by Region
 
@@ -338,7 +256,29 @@ for (i in 1:nrow(covid)) {
   
 }
 
-covid$New_cases_scaled <- covid$New_cases_scaled * 100000
+### Making Number of New Deaths Scaled by Population
+
+for (i in 1:nrow(covid)) {
+  covid$New_deaths_scaled[i] <- if (covid$WHO_region[i] == "Africa") {
+    covid$New_deaths[i] / africaPop$population
+  } else if (covid$WHO_region[i] == "Americas") {
+    covid$New_deaths[i] / americaspop$population
+  } else if (covid$WHO_region[i] == "Eastern Mediterranean") {
+    covid$New_deaths[i] / eastMedpop$population
+  } else if (covid$WHO_region[i] == "Europe") {
+    covid$New_deaths[i] / europepop$population
+  } else if (covid$WHO_region[i] == "South-East Asia") {
+    covid$New_deaths[i] / soeastAsiapop$population
+  } else {
+    covid$New_deaths[i] / westPacificpop$population
+  }
+  
+}
+
+### Final Scalings
+
+covid$New_cases_scaled <- covid$New_cases_scaled * 100000 + 5
+covid$New_deaths_scaled <- covid$New_deaths_scaled * 100000 + 5
 
 knitr::kable(
   covid %>% group_by(WHO_region) %>% summarise('New Cases' = sum(New_cases_scaled)),
@@ -348,17 +288,11 @@ knitr::kable(
 
 ```
 
-As evident from Table 2, we can see that there are obvious differences in the (scaled) number of new cases between the regions. For instance --- Europe and Americas have a much higher (scaled) number of new cases, than the other regions.  A comparison in the (scaled) number of corona virus cases by region willb e conducted, in the Analysis section of this paper.  
+As evident from Table 2, we can see that there are obvious differences in the (scaled) number of new cases between the regions. For instance --- Europe and Africa have a much higher (scaled) number of new cases, than the other regions. A comparison in the (scaled) number of corona virus cases by region will be conducted via a statistical approach in the results section.
 
-We will now proceed to analyze some of the more interesting variables in this dataset.  
-```{r Numerical Summaries for Other Variables}
-summary(covid[, c(4:8)])
-```
+We will now proceed to determine the distribution of mask mandates, by `WHO_region`, as presented in the waffle charts below.
 
-As evident from the `summary` function, we can see that the majority of the observations in this dataset were from Europe.  The region with the least amount of observations in this dataset, was South East Asia.  This implies that in terms of the ANCOVA model, we are dealing with an unbalanced design.  This is to be expected, as we are dealing with observational data.  Next, one may notice that the summaries for the `New_cases` and `New_deaths` variables have negative values as their minimum.  The reason behind this negative number, is that countries made corrections on the number of corona virus cases on previous days.  
-
-
-```{r Facial Covering Percentage, fig.dim=c(50,50), fig.cap="Figure 1: Waffle Chart for Proportions of Mask Mandates by Region"}
+```{r Facial Covering Percentage, fig.dim=c(10,10), fig.cap="Figure 2: Waffle Chart for Proportions of Mask Mandates by Region"}
 waffleVizAfr <-
   covid %>% filter(WHO_region == 'Africa') %>% group_by(facial_coverings) %>% summarise("count" = n()) %>% pull(name = facial_coverings) /
   1000
@@ -455,11 +389,16 @@ w5 <- waffle(parts = waffleVizWPac, rows = 5) +
 
 grid.arrange(w1, w2, w3, w4, w5, nrow = 3) 
 ```
-  As evident from Figure 1, the differing regions had differences in their respective mask requirements.  For Africa, it was most common for countries to require masks in all public spaces.  For Europe, most countries required masks in public areas to an extent.  For the Americas, most countries required masks in public areas.  For the West Pacific, most countries either had no policy. Finally, the majority of South-East Asia required masks in some public areas.  
-  
-```{r Violin Plot of Response by Region, fig.cap="Figure 2: Violin Plot of (Scaled) New Cases by Region"}
+
+As evident from Figure 1, the differing regions had differences in their respective mask requirements. For Africa, it was most common for countries to require masks in all public spaces. For Europe, most countries required masks in public areas to an extent. For the Americas, most countries required masks in public areas. For the West Pacific, most countries either had no policy. Finally, the majority of South-East Asia required masks in some public areas.
+
+Next, we shall analyze the distribution of our response variable: the (scaled) number of new cases, using a violin plot.
+
+
+
+```{r Violin Plot of Response by Region, fig.cap="Figure 3: Violin Plot of (Scaled) New Cases by Region"}
 covid %>% 
-  filter(Date_reported>= "2021-01-01", Date_reported<= "2021-01-28") %>% 
+  filter(Date_reported>= "2021-01-03", Date_reported<= "2022-03-01") %>% 
   group_by(WHO_region) %>%
   plot_ly(
     x= ~New_cases_scaled,
@@ -470,42 +409,212 @@ covid %>%
     showlegend = T
   )
 ```
-  
-```{r Scaled Number of New Cases by Region and Number Vaccinated }
-ggplot(covid, aes(x = recovered, y = New_cases_scaled)) +
-  geom_point(aes(group = WHO_region)) + 
-  facet_wrap(~facial_coverings)
+
+As evident from *Figure 3*, it appears that there are minor differences in the number of new cases, between the different regions. This suggests that it would be worth including `Who_region` as a factor in our regression model. Next, we will view the distribution of the number of new cases, with respect to the different facial covering restrictions.
+
+```{r Violin Plot of Response by facial_coverings, fig.cap="Figure 4: Violin Plot of (Scaled) New Cases by Facial Covering Restrictions"}
+covid %>% 
+  filter(Date_reported>= "2021-01-03", Date_reported<= "2022-03-01") %>% 
+  group_by(facial_coverings) %>%
+  plot_ly(
+    x= ~New_cases_scaled,
+    text=~facial_coverings,
+    hoverinfo="facial_coverings",
+    color=~facial_coverings,
+    type = 'violin',
+    showlegend = T
+  )
 ```
-  
-  
-  
+
+As presented in the *Figure 4*, there appears to be differences in the distributions of new cases by facial covering restrictions. Additionally, it appears that the variance between the distributions differ significantly -- which may present a potential issue when fitting our model. Next, we will analyze the distribution of the number of new cases with respect to the different gathering restrictions.
+
+```{r Violin Plot of Response by gatherings_restrictions, fig.cap="Figure 5: Violin Plot of (Scaled) New Cases by Gathering Restrictions"}
+covid %>% 
+  filter(Date_reported>= "2021-01-03", Date_reported<= "2022-03-01") %>% 
+  group_by(gatherings_restrictions) %>%
+  plot_ly(
+    x= ~New_cases_scaled,
+    text=~gatherings_restrictions,
+    hoverinfo="gatherings_restrictions",
+    color=~gatherings_restrictions,
+    type = 'violin',
+    showlegend = T
+  )
+```
+
+As evident from *Figure 5*, these conditional distributions do not appear to share a similar variance. This may as well, pose a potential issue when fitting our model.
 
 
+```{r Violin Plot of Response by schools_closing, fig.cap="Figure 6: Violin Plot of (Scaled) New Cases by School Closure Levels"}
+covid %>% 
+  filter(Date_reported>= "2021-01-03", Date_reported<= "2022-03-01") %>% 
+  group_by(school_closing) %>%
+  plot_ly(
+    x= ~New_cases_scaled,
+    text=~school_closing,
+    hoverinfo="school_closing",
+    color=~school_closing,
+    type = 'violin',
+    showlegend = T
+  )
+```
 
+As evident from *Figure 6*, the conditional distributions, again, appear to have different variances. Additionally, there do not appear to be any significant differences between the different school closure restrictions.  Finally, we shall analyze the distribution of the new coronavirus cases with respect to the varying event restrictions.  
+```{r Violin Plot of Response by cancel_events, fig.cap="Figure 7: Violin Plot of (Scaled) New Cases by Event Cancellation Severity"}
+covid %>% 
+  filter(Date_reported>= "2021-01-03", Date_reported<= "2022-03-01") %>% 
+  group_by(cancel_events) %>%
+  plot_ly(
+    x= ~New_cases_scaled,
+    text=~cancel_events,
+    hoverinfo="cancel_events",
+    color=~school_closing,
+    type = 'violin',
+    showlegend = T
+  )
+```
 
-# ANCOVA Model
+As evident from the violin plots presented in *Figure 7*, these conditional distributions, again, appear to not share a common variance.  Therefore, this suggests that a transformation may be needed to coerce the response variable into the homoskedasticity assumption.  
+
+Finally, we analyze the relationship between the (scaled) number of new_deaths, with the (scaled) number of new cases.  
+
+```{r Scatterplot, fig.cap="Figure 8: Scatterplot of New Deaths vs. New Cases"}
+ggplot(data = covid, aes(x = New_deaths_scaled, y = New_cases_scaled)) + 
+  geom_point(color = 'blue') 
+```
+
+As evident from the scatterplot, there is a curved, parabolic, relationship between the number of people who recovered, and the (scaled) number of new cases. This suggests that (individually), the relationship between the number of new cases and the number of deaths, is non-linear -- and hence, will be reflected in our model.
+
+# Regression Model
+
+## Preliminary Fit
+
+The purpose of this preliminary fit, is to gain inference on whether the variables selected (see *Background*) were significant in determining the number of new corona viruses cases.  We now fit a simple, multiple regression model with all of the factors of interest, using the `lm` function from `base`.  
+
+$$
+Y_i = \beta_0 + \beta_1X_{1i} + \beta_2X_{2i} + \beta_3X_{3i} + \beta_4X_{4i} + \beta_5X_{5i} + \beta_6X_{6i}+\epsilon_i \\ i = 1,2,...101,893, \text{  Where } \epsilon \stackrel{i.i.d.}{\sim} Normal(0, \sigma^2), \text{ and:} \\ X_1 = \text{New_deaths, } X_2 = \text{WHO_region, } X_3 = \text{gathering_restrictions, } \\ X_4 = \text{school_closing, } X_5 = \text{cancel_events, and }X_6 = \text{facial_coverings}
+$$
+
 
 
 ```{r}
-fit1 <- lm(New_cases_scaled ~ recovered + I(recovered^2) + WHO_region + factor(gatherings_restrictions) + factor(school_closing) + factor(cancel_events) + facial_coverings-1, data = covid)
+prelimFit <- lm(New_cases_scaled ~ New_deaths_scaled + WHO_region + factor(gatherings_restrictions) + factor(school_closing) + factor(cancel_events) + facial_coverings, data = covid)
+summary(prelimFit)
 ```
 
+From the `summary` function output, we can see that (almost) every term in the model was significantly different from 0.  However, the value of the $R^2_{adj}$ is very low, suggesting that not much variability was explained by the model. To diagnose the potential issues, we shall utilize a residual a QQ-plot, and the Cook's Distance Criteria.  We set the threshold, that if a residual obtains a Cook's distance of 0.1, or greater, than it will be considered an influential point.    
+
+### Residual Analysis
+
+```{r}
+par(mfrow = c(2,2))
+plot(prelimFit, which = 1)
+plot(prelimFit, which = 2)
+plot(prelimFit, which = 4)
+plot(prelimFit, which = 5)
+```
+
+As evident from the residual plot, the homoskedasticity assumption of the regression, appears to be violated.  A fan effect is demonstrated in the residual plot, along with a few notable outliers.  There also appears to be a slight curvature to the residuals.  This suggests that adding a second power  `New_deaths_scaled` term may help to capture more variance in the number of new corona virus cases.  Additionally, we can see from the normality plot that the distribution is very right skewed.  Next, we can see that there were a few outliers that were influential points, such as observation $27228$.  Before we move onto our next fit, we shall eliminate the influential points in the model, utilize the *Box-Cox* method, in order to find a suitable transformation for the data.  
+
+```{r}
+# which(cooks.distance(prelimFit) > 0.1)
+covid_outlier_free <- covid[c(-27228, -33869), ]
+```
+
+## Transformation
+
+```{r}
+boxcox(prelimFit)
+```
+
+According to the Box-Cox transformation method, the best suited transformation of the response variable is $Y^{-2}$. Next, we will implement the transformation on our model, with the high influential points removed.
+
+## Initial Fit
+
+For our next model, we will take the advice of the *Box-Cox* procedure, and include a second-order term for the `New_deaths_scaled` variable.  Additionally, we will remove all the observations that had a *Cook's Distance* measurement of $0.1$ or greater.  
+
+$$
+(Y_i)^{-2} = \beta_0 + \beta_1X_{1i} + \beta_2X_{2i} + \beta_3X_{3i} + \beta_4X_{4i} + \beta_5X_{5i} + \beta_6X_{6i}+ \beta_7(X_{6i})^2 + \epsilon_i \\ i = 1,2,...101,893, \text{  Where } \epsilon \stackrel{i.i.d.}{\sim} Normal(0, \sigma^2), \text{ and:} \\ X_1 = \text{New_deaths, } X_2 = \text{WHO_region, } X_3 = \text{gathering_restrictions, } \\ X_4 = \text{school_closing, } X_5 = \text{cancel_events, and }X_6 = \text{facial_coverings}
+$$
+
+```{r}
+fit1 <- lm((New_cases_scaled)^(-2) ~ New_deaths_scaled + I(New_deaths_scaled^2) + WHO_region + factor(gatherings_restrictions) + factor(school_closing) + factor(cancel_events) + facial_coverings, data = covid_outlier_free)
+summary(fit1)
+```
+
+As evident from the `summary` output, we can see that every term in the model is now statistically significant.  Additionally, we can see that the value of the $R^2_{adj}$ has increased to $0.4291$.  With this improvement in the model, we shall now turn to residual analysis in order to ensure that our model assumptions have been met.  
+
+### Residual Analysis
+
+```{r}
+par(mfrow = c(2,2))
+plot(fit1, which = 1)
+plot(fit1, which = 2)
+plot(fit1, which = 4)
+plot(fit1, which = 5)
+#which(cooks.distance(fit1) > 0.1) ### To determine Influential Points
+covid_without_residuals <- covid_outlier_free[c(-33642, -47313, -73484), ]
+```
+
+As evident from the residual plot, there appears to be multiple outliers present.  However, there homoskedasticity assumption appears to have been improved.  Additionally, we can see that the normality assumption of the data has improved, but still deviates slightly along the more extreme theoretical quantiles.  Next, from the *Cook's Distance* plots, we can see that there are a few outliers that are influential points.  Therefore, in hope of fixing the homoskedasticity and the normality assumptions, we shall remove these influential points, and refit the model.  
+
+## Second Fit (without Outliers)
+
+```{r}
+fit2 <- lm((New_cases_scaled)^(-2) ~ New_deaths_scaled + I(New_deaths_scaled^2) + WHO_region + factor(gatherings_restrictions) + factor(school_closing) + factor(cancel_events) + facial_coverings, data = covid_without_residuals)
+summary(fit2)
+
+par(mfrow = c(2,2))
+plot(fit2, which = 1)
+plot(fit2, which = 2)
+plot(fit2, which = 4)
+plot(fit2, which = 5) 
+which(cooks.distance(fit2) > 0.1)
+```
+
+As evident from the leverage plots, there are still a few influential points present in the data.  Therefore, we shall refit the model with these influential points removed.
+
+```{r}
+covid_without_residuals <- covid_without_residuals[c(-90525, -90527, -90528, -90529), ]
+fit3 <- lm((New_cases_scaled)^(-2) ~ New_deaths_scaled + I(New_deaths_scaled^2) + WHO_region + factor(gatherings_restrictions) + factor(school_closing) + factor(cancel_events) + facial_coverings, data = covid_without_residuals)
+summary(fit3)
+```
+
+As evident from `summary` output, we can see that the $R^2_{adj}$ has increased to a value of 46.5%.  We will now analyze the residuals, once more. 
+
+```{r}
+par(mfrow = c(2,2))
+plot(fit3, which = 1)
+plot(fit3, which = 2)
+plot(fit3, which = 4)
+plot(fit3, which = 5) 
+boxcox(fit3)
+```
+
+As evident from the residual plots, it appears that the homoskedasticity assumption may still be violated.  Additionally, the normality assumption of the residuals may have been violated.  Therefore, we will consider utilizing another Box-Cox transformation.  However. due to the large sample size of this dataset, I believe that we may be more lenient with these assumptions.  
+
+### Hypothesis Testing for Significant Effects
+
+**Determining whether to use Likelihood Ratio Tests, or continue with F-tests.  Awaiting confirmation from Miss Zitong.**
 
 
 
-# Bayesian Model
+# A Note on Causal Inference
 
+In this dataset, causal inference is not feasible.  The reason we are unable to conduct causal inference in this scenario, is that the Stable Unit Treatment Value Assumptions (SUTVA) have been violated.  One of the most demonstrative violations of the SUTVA, lies in the `facial_covering` variable. Some people have utilized N95 masks as face coverings throughout the pandemic, while others have opted for less- protective options, such as *Face Shields* or neck-gaiters.  Since this treatment is tailored to each individuals personal preferences, we cannot make causal inference.  Additionally, we cannot utilize the ignorability assumption, as there are no covariates for which we can assume that the assignment of our factors are conditionally independent of the potential outcomes, in the its presence.  Therefore, we are left to suffer the drawbacks associated with a lack of randomization. 
 
-# Model Selection
-
- Diagnostics
-
-## Sensitivity Analysis
 
 # Conclusion
 
+Overall, we can conclude that the factors `facial_covering`, `cancel_events`, `WHO_region`, `gatherings_restrictions`, , `New_deaths_scaled`, and `school_closing` had a significant effect on the number of new cases.  
+
+
 # References
+
+<https://ourworldindata.org/coronavirus-testing>
 
 <https://data.worldbank.org/indicator/SP.POP.TOTL>
 
 <https://en.wikipedia.org/wiki/Demographics_of_Eritrea>
+
+<https://covid19.who.int/info>
